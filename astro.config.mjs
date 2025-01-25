@@ -1,9 +1,23 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import svelte from '@astrojs/svelte';
+import fs from 'fs';
 
+// Load config from env
 const isProd = process.env.NODE_ENV === 'production';
-const port = process.env.PORT ? parseInt(process.env.PORT) : 4321;
+const serverHost = process.env.VITE_SERVER_HOST || 'localhost';
+const serverPort = parseInt(process.env.VITE_SERVER_PORT || '3000');
+const wsHost = process.env.VITE_WS_HOST || 'localhost';
+const wsPort = parseInt(process.env.VITE_WS_PORT || '4321');
+const hmrPort = parseInt(process.env.VITE_HMR_PORT || '24678');
+const sslKeyPath = process.env.VITE_SSL_KEY_PATH || './certs/key.pem';
+const sslCertPath = process.env.VITE_SSL_CERT_PATH || './certs/cert.pem';
+
+// Load SSL certificates
+const ssl = {
+  key: fs.readFileSync(sslKeyPath),
+  cert: fs.readFileSync(sslCertPath),
+};
 
 // https://astro.build/config
 export default defineConfig({
@@ -14,26 +28,27 @@ export default defineConfig({
     }),
   ],
   server: {
-    port,
-    host: true,
+    port: serverPort,
+    host: serverHost,
+    https: ssl,
   },
   vite: {
     server: {
+      https: ssl,
       hmr: isProd ? false : {
-        protocol: process.env.VITE_HMR_PROTOCOL || 'ws',
-        host: process.env.VITE_HMR_HOST || 'localhost',
-        port: process.env.VITE_HMR_PORT ? parseInt(process.env.VITE_HMR_PORT) : port,
-        clientPort: process.env.VITE_HMR_CLIENT_PORT ? parseInt(process.env.VITE_HMR_CLIENT_PORT) : undefined,
+        protocol: 'wss',
+        host: serverHost,
+        port: hmrPort,
+        clientPort: hmrPort,
       },
       watch: {
-        usePolling: process.env.VITE_USE_POLLING === 'true',
+        usePolling: false,
       },
-      proxy: isProd ? {} : {
-        '/ws': {
-          target: process.env.VITE_WS_PROXY_TARGET || `ws://localhost:${port}`,
+      proxy: {
+        '/api/ws': {
+          target: `wss://${wsHost}:${wsPort}`,
           ws: true,
-          secure: process.env.VITE_WS_SECURE === 'true',
-          rewrite: (path) => path.replace(/^\/ws/, ''),
+          secure: false,
         },
       },
     },

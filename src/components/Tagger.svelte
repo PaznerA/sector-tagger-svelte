@@ -3,14 +3,14 @@
   import { createEventDispatcher } from 'svelte';
   import SelectedPanel from './SelectedPanel.svelte';
   import HoverPanel from './HoverPanel.svelte';
-  import type { BaseSector } from '../lib/api/types';
+  import type { BaseSector } from '../lib/types';
   import { WebSocketClient } from '../lib/api/websocketClient';
   import '../styles/panels.css';
 
   const { projectId } = $props<{projectId: number}>();
   
   const dispatch = createEventDispatcher();
-  const wsClient = new WebSocketClient('ws://192.168.0.108:4321');
+  const wsClient = new WebSocketClient();
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
@@ -86,28 +86,10 @@
       canvas.height = height;
     }
 
-    // Fetch initial project data
-    fetch(`/api/projects/${projectId}`)
-      .then(response => {
-        if (response.ok) {
-          return response.json();
-        }
-        throw new Error('Failed to fetch project');
-      })
-      .then(project => {
-        items = project.items;
-      })
-      .catch(error => {
-        console.error('Failed to load project:', error);
-      });
-
-    // Connect WebSocket after getting initial data
-    wsClient.connect(projectId);
-    const unsubscribe = wsClient.onMessage((message) => {
-      if (message.type === 'sync') {
-        items = message.items;
-        draw();
-      }
+    // Subscribe to WebSocket client updates
+    const unsubscribe = wsClient.subscribe((newItems) => {
+      items = newItems;
+      draw();
     });
     
     if (typeof window !== 'undefined') {
@@ -119,7 +101,6 @@
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize);
       }
-      wsClient.disconnect();
     };
   });
 

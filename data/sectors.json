@@ -1,0 +1,132 @@
+[
+  {
+    "id": 1,
+    "name": "Main Page",
+    "level": "page",
+    "x": 100,
+    "y": 100,
+    "width": 1200,
+    "height": 800,
+    "rotation": 0,
+    "scale": 1
+  },
+  {
+    "id": 2,
+    "name": "Header View",
+    "level": "view",
+    "x": 407,
+    "y": 139,
+    "width": 500,
+    "height": 300,
+    "rotation": 0,
+    "scale": 0.8,
+    "parentId": 1
+  },
+  {
+    "id": 3,
+    "name": "Content View",
+    "level": "view",
+    "x": 150,
+    "y": 500,
+    "width": 500,
+    "height": 300,
+    "rotation": 0,
+    "scale": 1.2,
+    "parentId": 1
+  },
+  {
+    "id": 4,
+    "name": "Logo Sector",
+    "level": "sector",
+    "x": 781.25,
+    "y": 466.25,
+    "width": 200,
+    "height": 100,
+    "rotation": 0,
+    "scale": 1,
+    "parentId": 2
+  },
+  {
+    "id": 5,
+    "name": "Menu Sector",
+    "level": "sector",
+    "x": 778.75,
+    "y": 587.5,
+    "width": 200,
+    "height": 100,
+    "rotation": 0,
+    "scale": 1,
+    "parentId": 2
+  },
+  {
+    "id": 6,
+    "name": "Sidebar Sector",
+    "level": "sector",
+    "x": 170,
+    "y": 520,
+    "width": 150,
+    "height": 250,
+    "rotation": 0,
+    "scale": 1,
+    "parentId": 3
+  },
+  {
+    "id": 7,
+    "name": "Article Sector",
+    "level": "sector",
+    "x": 350,
+    "y": 520,
+    "width": 250,
+    "height": 250,
+    "rotation": 0,
+    "scale": 1,
+    "parentId": 3
+  },
+  {
+    "id": 8,
+    "name": "Second Page",
+    "level": "page",
+    "x": 1400,
+    "y": 100,
+    "width": 1200,
+    "height": 800,
+    "rotation": 0,
+    "scale": 1
+  },
+  {
+    "id": 9,
+    "name": "Main View",
+    "level": "view",
+    "x": 1450,
+    "y": 150,
+    "width": 1100,
+    "height": 700,
+    "rotation": 15,
+    "scale": 0.9,
+    "parentId": 8
+  },
+  {
+    "id": 10,
+    "name": "Hero Sector",
+    "level": "sector",
+    "x": 1500,
+    "y": 200,
+    "width": 300,
+    "height": 200,
+    "rotation": -15,
+    "scale": 1.1,
+    "parentId": 9
+  },
+  {
+    "id": 11,
+    "name": "Gallery Sector",
+    "level": "sector",
+    "x": 1500,
+    "y": 450,
+    "width": 1000,
+    "height": 350,
+    "rotation": 0,
+    "scale": 1,
+    "parentId": 9
+  }
+]

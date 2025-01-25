@@ -1,85 +1,89 @@
-import type { ApiMessage, Project } from './types';
+import type { ApiMessage, BaseSector } from '../types';
+import { LocalStore } from '../storage/localStore';
+import config from '../config';
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
-  private reconnectTimeout: number | null = null;
-  private projectId: number | null = null;
-  private messageHandlers: ((message: ApiMessage) => void)[] = [];
+  private store: LocalStore;
+  private reconnectTimeout: number = 1000;
+  private maxReconnectTimeout: number = 30000;
+  private subscribers: Set<(items: BaseSector[]) => void> = new Set();
+  private connected: boolean = false;
 
-  constructor(private baseUrl: string) {}
+  constructor() {
+    this.store = new LocalStore();
+    this.connect();
+  }
 
-  connect(projectId: number) {
-    this.projectId = projectId;
-    
-    if (this.ws) {
-      this.ws.close();
-    }
-
+  private connect() {
     try {
-      this.ws = new WebSocket(this.baseUrl);
-
+      // Use proxy URL from current host
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      const wsUrl = `${protocol}//${host}${config.ws.path}`;
+      console.log('Connecting to WebSocket:', wsUrl);
+      
+      this.ws = new WebSocket(wsUrl);
+      
       this.ws.onopen = () => {
         console.log('WebSocket connected');
-        this.sendMessage({ type: 'init', projectId });
+        this.connected = true;
+        this.reconnectTimeout = 1000;
+        this.sendMessage({ type: 'init', projectId: 1 });
       };
 
       this.ws.onclose = () => {
-        console.log('WebSocket connection closed');
-        this.ws = null;
-        // Try to reconnect after 5 seconds
-        this.reconnectTimeout = setTimeout(() => {
-          this.connect(projectId);
-        }, 5000) as unknown as number;
-      };
-
-      this.ws.onerror = (error) => {
-        console.log('WebSocket error:', error);
+        console.log('WebSocket disconnected, will retry in', this.reconnectTimeout, 'ms');
+        this.connected = false;
+        // Exponential backoff for reconnect
+        setTimeout(() => this.connect(), this.reconnectTimeout);
+        this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, this.maxReconnectTimeout);
       };
 
       this.ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data) as ApiMessage;
-          this.messageHandlers.forEach(handler => handler(message));
-        } catch (e) {
-          console.error('Failed to parse message:', e);
+        const message = JSON.parse(event.data) as ApiMessage;
+        if (message.type === 'sync') {
+          this.store.sync(message.items);
+          this.notifySubscribers(message.items);
         }
       };
-    } catch (e) {
-      console.error('Failed to connect:', e);
+
+      this.ws.onerror = (error) => {
+        console.warn('WebSocket error:', error);
+      };
+    } catch (error) {
+      console.error('Failed to connect:', error);
+      this.connected = false;
+      setTimeout(() => this.connect(), this.reconnectTimeout);
     }
   }
 
-  disconnect() {
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-    
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+  subscribe(callback: (items: BaseSector[]) => void) {
+    this.subscribers.add(callback);
+    if (this.store.items.length > 0) {
+      callback(this.store.items);
     }
   }
 
-  onMessage(handler: (message: ApiMessage) => void) {
-    this.messageHandlers.push(handler);
-    return () => {
-      this.messageHandlers = this.messageHandlers.filter(h => h !== handler);
-    };
+  unsubscribe(callback: (items: BaseSector[]) => void) {
+    this.subscribers.delete(callback);
+  }
+
+  private notifySubscribers(items: BaseSector[]) {
+    this.subscribers.forEach(callback => callback(items));
   }
 
   private sendMessage(message: ApiMessage) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     }
   }
 
-  // Public methods for sending updates
-  updateItem(item: Project['items'][0]) {
+  updateItem(item: BaseSector) {
     this.sendMessage({ type: 'update', item });
   }
 
-  createItem(item: Omit<Project['items'][0], 'id'>) {
+  createItem(item: BaseSector) {
     this.sendMessage({ type: 'create', item });
   }
 

@@ -4,27 +4,49 @@ import { mockItems } from './mockData';
 import config from '../config';
 import https from 'https';
 import fs from 'fs';
+import path from 'path';
 
 export class MockWebSocketServer {
   private wss: WebSocketServer;
-  private items: BaseSector[] = [...mockItems];
+  private items: BaseSector[] = [];
+  private dataFile = path.join(process.cwd(), 'data', 'sectors.json');
 
   constructor() {
+    // Create data directory if it doesn't exist
+    const dataDir = path.dirname(this.dataFile);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    // Load data from file or use mock data
+    try {
+      if (fs.existsSync(this.dataFile)) {
+        const data = fs.readFileSync(this.dataFile, 'utf-8');
+        this.items = JSON.parse(data);
+      } else {
+        this.items = [...mockItems];
+        this.saveData();
+      }
+    } catch (error) {
+      console.error('Failed to load data:', error);
+      this.items = [...mockItems];
+    }
+
     // Create HTTPS server
     const server = https.createServer({
-      cert: fs.readFileSync(config.ssl.certPath),
-      key: fs.readFileSync(config.ssl.keyPath),
+      cert: fs.readFileSync('./certs/cert.pem'),
+      key: fs.readFileSync('./certs/key.pem'),
     });
 
     // Create WebSocket server attached to HTTPS server
     this.wss = new WebSocketServer({ 
       server,
-      path: config.ws.path,
+      path: '/api/ws',
     });
 
     // Start HTTPS server
-    server.listen(config.ws.port, config.ws.host, () => {
-      console.log(`WebSocket server listening on ${config.ws.host}:${config.ws.port} (HTTPS)`);
+    server.listen(parseInt(config.api.port), () => {
+      console.log(`WebSocket server listening on port ${config.api.port} (HTTPS)`);
     });
 
     this.wss.on('connection', (ws) => {
@@ -41,6 +63,14 @@ export class MockWebSocketServer {
     });
   }
 
+  private saveData() {
+    try {
+      fs.writeFileSync(this.dataFile, JSON.stringify(this.items, null, 2));
+    } catch (error) {
+      console.error('Failed to save data:', error);
+    }
+  }
+
   private handleMessage(message: ApiMessage, ws: WebSocket) {
     switch (message.type) {
       case 'init': {
@@ -52,17 +82,20 @@ export class MockWebSocketServer {
         if (index !== -1) {
           this.items[index] = message.item;
           this.broadcast({ type: 'sync', items: this.items });
+          this.saveData();
         }
         break;
       }
       case 'create': {
         this.items.push(message.item);
         this.broadcast({ type: 'sync', items: this.items });
+        this.saveData();
         break;
       }
       case 'delete': {
         this.items = this.items.filter(item => item.id !== message.itemId);
         this.broadcast({ type: 'sync', items: this.items });
+        this.saveData();
         break;
       }
     }
