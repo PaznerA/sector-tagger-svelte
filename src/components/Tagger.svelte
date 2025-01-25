@@ -47,28 +47,29 @@
   });
 
   function updateCursor() {
-    if (!canvas) return;
-    
     if (isDragging) {
       canvas.style.cursor = 'grabbing';
     } else if (isResizing || isRotating) {
+      canvas.style.cursor = 'grabbing';
+    } else if (hoveredId) {
       canvas.style.cursor = 'pointer';
     } else if (hoveredHandle) {
       switch (hoveredHandle) {
-        case 'top-left':
+        case 'right':
+        case 'left':
+          canvas.style.cursor = 'ew-resize';
+          break;
+        case 'top':
+        case 'bottom':
+          canvas.style.cursor = 'ns-resize';
+          break;
         case 'bottom-right':
           canvas.style.cursor = 'nw-resize';
-          break;
-        case 'top-right':
-        case 'bottom-left':
-          canvas.style.cursor = 'ne-resize';
           break;
         case 'rotate':
           canvas.style.cursor = 'grab';
           break;
       }
-    } else if (hoveredId !== null) {
-      canvas.style.cursor = 'grab';
     } else {
       canvas.style.cursor = 'default';
     }
@@ -137,10 +138,22 @@
 
   function getMousePos(e: MouseEvent) {
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
     };
+  }
+
+  function getScaleFactor(item: BaseSector): number {
+    let scale = 1;
+    let parent = items.find(i => i.id === item.parentId);
+    while (parent) {
+      scale *= parent.scale;
+      parent = items.find(i => i.id === parent.parentId);
+    }
+    return scale;
   }
 
   function draw() {
@@ -192,7 +205,7 @@
 
     // Draw transform handles
     if (item.id === transformingId) {
-      const handleSize = 8;
+      const handleSize = 16;
       
       // Draw transform frame
       ctx.strokeStyle = '#3498db';
@@ -203,9 +216,10 @@
 
       // Draw resize handles
       const handles = {
-        'top-left': { x: -item.width / 2, y: -item.height / 2 },
-        'top-right': { x: item.width / 2, y: -item.height / 2 },
-        'bottom-left': { x: -item.width / 2, y: item.height / 2 },
+        'left': { x: -item.width / 2, y: 0 },
+        'right': { x: item.width / 2, y: 0 },
+        'top': { x: 0, y: -item.height / 2 },
+        'bottom': { x: 0, y: item.height / 2 },
         'bottom-right': { x: item.width / 2, y: item.height / 2 },
       };
 
@@ -247,7 +261,7 @@
   function isNearHandle(pos: { x: number, y: number }, item: BaseSector): string | null {
     if (item.id !== transformingId) return null;
 
-    const handleSize = 8;
+    const handleSize = 16;
     const center = {
       x: item.x + item.width / 2,
       y: item.y + item.height / 2,
@@ -256,28 +270,72 @@
     const cos = Math.cos(-angle);
     const sin = Math.sin(-angle);
 
-    // Transform mouse position relative to center
+    // Transform mouse position relative to center and rotation
     const relX = pos.x - center.x;
     const relY = pos.y - center.y;
     const transformedX = relX * cos - relY * sin;
     const transformedY = relX * sin + relY * cos;
 
-    // Check resize handles
+    // Check resize handles with padding
+    const padding = handleSize;
     const handles = {
-      'top-left': { x: -item.width / 2, y: -item.height / 2 },
-      'top-right': { x: item.width / 2, y: -item.height / 2 },
-      'bottom-left': { x: -item.width / 2, y: item.height / 2 },
-      'bottom-right': { x: item.width / 2, y: item.height / 2 },
-      'rotate': { x: 0, y: -item.height / 2 - 20 },
+      'left': { x: -item.width / 2 - padding / 2, y: 0 },
+      'right': { x: item.width / 2 + padding / 2, y: 0 },
+      'top': { x: 0, y: -item.height / 2 - padding / 2 },
+      'bottom': { x: 0, y: item.height / 2 + padding / 2 },
+      'bottom-right': { x: item.width / 2 + padding / 2, y: item.height / 2 + padding / 2 },
+      'rotate': { x: 0, y: -item.height / 2 - 20 - padding / 2 },
     };
 
     for (const [handle, point] of Object.entries(handles)) {
-      if (Math.abs(transformedX - point.x) < handleSize && Math.abs(transformedY - point.y) < handleSize) {
+      const distance = Math.sqrt(
+        Math.pow(transformedX - point.x, 2) + 
+        Math.pow(transformedY - point.y, 2)
+      );
+      if (distance < handleSize) {
         return handle;
       }
     }
 
     return null;
+  }
+
+  function findClickedItem(pos: { x: number; y: number }): BaseSector | null {
+    // During transform mode, only allow clicking the transformed item
+    if (transformingId !== null) {
+      const transformingItem = items.find(item => item.id === transformingId);
+      if (transformingItem && isPointInItem(pos, transformingItem)) {
+        return transformingItem;
+      }
+      return null;
+    }
+
+    // Search in reverse order to find top-most item first
+    return [...items].reverse().find(item => isPointInItem(pos, item)) ?? null;
+  }
+
+  function isPointInItem(pos: { x: number; y: number }, item: BaseSector): boolean {
+    // Transform point to item's coordinate space
+    const center = {
+      x: item.x + item.width / 2,
+      y: item.y + item.height / 2,
+    };
+    
+    const angle = (item.rotation * Math.PI) / 180;
+    const cos = Math.cos(-angle);
+    const sin = Math.sin(-angle);
+
+    const relX = pos.x - center.x;
+    const relY = pos.y - center.y;
+    const transformedX = relX * cos - relY * sin;
+    const transformedY = relX * sin + relY * cos;
+
+    return (
+      transformedX >= -item.width / 2 &&
+      transformedX <= item.width / 2 &&
+      transformedY >= -item.height / 2 &&
+      transformedY <= item.height / 2
+    );
   }
 
   function handleMouseDown(e: MouseEvent) {
@@ -304,6 +362,8 @@
             isResizing = true;
             startWidth = clickedItem.width;
             startHeight = clickedItem.height;
+            startX = clickedItem.x;
+            startY = clickedItem.y;
             
             // Transform initial mouse position
             const angle = (clickedItem.rotation * Math.PI) / 180;
@@ -318,13 +378,17 @@
         }
       }
       
-      isDragging = true;
-      startX = clickedItem.x;
-      startY = clickedItem.y;
-      dragStartX = pos.x;
-      dragStartY = pos.y;
-      selectedId = clickedItem.id;
-    } else {
+      // Only allow dragging if not in transform mode or if dragging the transformed item
+      if (transformingId === null || transformingId === clickedItem.id) {
+        isDragging = true;
+        startX = clickedItem.x;
+        startY = clickedItem.y;
+        dragStartX = pos.x;
+        dragStartY = pos.y;
+        selectedId = clickedItem.id;
+      }
+    } else if (transformingId === null) {
+      // Only clear selection if not in transform mode
       selectedId = null;
     }
   }
@@ -333,14 +397,16 @@
     const pos = getMousePos(e);
     
     if (isDragging && draggedItem) {
-      const deltaX = pos.x - dragStartX;
-      const deltaY = pos.y - dragStartY;
+      const scale = getScaleFactor(draggedItem);
+      const deltaX = (pos.x - dragStartX) / scale;
+      const deltaY = (pos.y - dragStartY) / scale;
       const newX = startX + deltaX;
       const newY = startY + deltaY;
       
       updateItemPosition(draggedItem.id, newX, newY);
       draw();
     } else if (isResizing && draggedItem) {
+      const scale = getScaleFactor(draggedItem);
       const center = {
         x: draggedItem.x + draggedItem.width / 2,
         y: draggedItem.y + draggedItem.height / 2,
@@ -350,77 +416,70 @@
       const sin = Math.sin(-angle);
 
       // Transform mouse position relative to center and rotation
-      const relX = pos.x - center.x;
-      const relY = pos.y - center.y;
+      const relX = (pos.x - center.x) / scale;
+      const relY = (pos.y - center.y) / scale;
       const transformedX = relX * cos - relY * sin;
       const transformedY = relX * sin + relY * cos;
 
       let newWidth = startWidth;
       let newHeight = startHeight;
-      const scale = 2;
+      let newX = startX;
+      let newY = startY;
 
       // Calculate deltas for both dimensions
-      const deltaX = (transformedX - dragStartX) * scale;
-      const deltaY = (transformedY - dragStartY) * scale;
+      const deltaX = (transformedX - dragStartX);
+      const deltaY = (transformedY - dragStartY);
 
       // Maintain aspect ratio if shift is pressed
       const aspectRatio = startWidth / startHeight;
       const keepAspectRatio = e.shiftKey;
 
-      // Size constraints based on level
-      const minSize = draggedItem.level === 'page' ? 100 : 
-                     draggedItem.level === 'view' ? 50 : 20;
-      const maxSize = draggedItem.level === 'page' ? 2000 : 
-                     draggedItem.level === 'view' ? 1000 : 500;
+      // Size constraints based on level and scale
+      const minSize = (draggedItem.level === 'page' ? 100 : 
+                     draggedItem.level === 'view' ? 50 : 20) * scale;
+      const maxSize = (draggedItem.level === 'page' ? 2000 : 
+                     draggedItem.level === 'view' ? 1000 : 500) * scale;
 
       switch (currentHandle) {
-        case 'top-left':
-          if (keepAspectRatio) {
-            const delta = Math.max(Math.abs(deltaX), Math.abs(deltaY));
-            newWidth = startWidth - delta;
-            newHeight = newWidth / aspectRatio;
-          } else {
-            newWidth = startWidth - deltaX;
-            newHeight = startHeight - deltaY;
+        case 'left':
+          newWidth = Math.max(minSize, Math.min(maxSize, startWidth - deltaX));
+          if (newWidth !== startWidth) {
+            // Adjust position to keep right side fixed
+            const widthDelta = newWidth - startWidth;
+            newX = startX - widthDelta;
           }
           break;
-        case 'top-right':
-          if (keepAspectRatio) {
-            const delta = Math.max(Math.abs(deltaX), Math.abs(deltaY));
-            newWidth = startWidth + delta;
-            newHeight = newWidth / aspectRatio;
-          } else {
-            newWidth = startWidth + deltaX;
-            newHeight = startHeight - deltaY;
+        case 'right':
+          newWidth = Math.max(minSize, Math.min(maxSize, startWidth + deltaX));
+          break;
+        case 'top':
+          newHeight = Math.max(minSize, Math.min(maxSize, startHeight - deltaY));
+          if (newHeight !== startHeight) {
+            // Adjust position to keep bottom side fixed
+            const heightDelta = newHeight - startHeight;
+            newY = startY - heightDelta;
           }
           break;
-        case 'bottom-left':
-          if (keepAspectRatio) {
-            const delta = Math.max(Math.abs(deltaX), Math.abs(deltaY));
-            newWidth = startWidth - delta;
-            newHeight = newWidth / aspectRatio;
-          } else {
-            newWidth = startWidth - deltaX;
-            newHeight = startHeight + deltaY;
-          }
+        case 'bottom':
+          newHeight = Math.max(minSize, Math.min(maxSize, startHeight + deltaY));
           break;
         case 'bottom-right':
           if (keepAspectRatio) {
             const delta = Math.max(Math.abs(deltaX), Math.abs(deltaY));
-            newWidth = startWidth + delta;
+            newWidth = Math.max(minSize, Math.min(maxSize, startWidth + delta));
             newHeight = newWidth / aspectRatio;
           } else {
-            newWidth = startWidth + deltaX;
-            newHeight = startHeight + deltaY;
+            newWidth = Math.max(minSize, Math.min(maxSize, startWidth + deltaX));
+            newHeight = Math.max(minSize, Math.min(maxSize, startHeight + deltaY));
           }
           break;
       }
 
-      // Apply size constraints
-      newWidth = Math.max(minSize, Math.min(maxSize, newWidth));
-      newHeight = Math.max(minSize, Math.min(maxSize, newHeight));
-      
+      // Update size and position
       updateItemSize(draggedItem.id, newWidth, newHeight);
+      if (newX !== startX || newY !== startY) {
+        updateItemPosition(draggedItem.id, newX, newY);
+      }
       draw();
     } else if (isRotating && draggedItem) {
       const center = {
@@ -444,14 +503,14 @@
         const transformingItem = items.find(item => item.id === transformingId);
         if (transformingItem) {
           hoveredHandle = isNearHandle(pos, transformingItem);
+          hoveredId = transformingId; // Keep hover on transforming item
           updateCursor();
         }
-      }
-
-      // Then check for hover over items
-      const hovered = findClickedItem(pos);
-      hoveredId = hovered?.id ?? null;
-      if (!hoveredHandle) {
+      } else {
+        // Only check for hover over items when not transforming
+        const hovered = findClickedItem(pos);
+        hoveredId = hovered?.id ?? null;
+        hoveredHandle = null;
         updateCursor();
       }
       draw();
@@ -465,35 +524,6 @@
     draggedItem = null;
     currentHandle = '';
     updateCursor();
-  }
-
-  function findClickedItem(pos: { x: number; y: number }): BaseSector | null {
-    // Search in reverse order to find top-most item first
-    return [...items].reverse().find(item => {
-      return (
-        pos.x >= item.x &&
-        pos.x <= item.x + item.width &&
-        pos.y >= item.y &&
-        pos.y <= item.y + item.height
-      );
-    }) ?? null;
-  }
-
-  function isNearCorner(pos: { x: number, y: number }, item: BaseSector): boolean {
-    const cornerSize = 10;
-    const corners = [
-      { x: item.x, y: item.y },
-      { x: item.x + item.width, y: item.y },
-      { x: item.x, y: item.y + item.height },
-      { x: item.x + item.width, y: item.y + item.height },
-    ];
-
-    return corners.some(corner => {
-      return (
-        Math.abs(pos.x - corner.x) < cornerSize &&
-        Math.abs(pos.y - corner.y) < cornerSize
-      );
-    });
   }
 
   function updateItemPosition(id: number, x: number, y: number) {
