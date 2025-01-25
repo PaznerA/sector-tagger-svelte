@@ -1,11 +1,10 @@
-import { MockWebSocketServer } from '../src/lib/api/mockWebSocketServer';
+import { WebSocketManager } from '../src/lib/api/WebSocketManager';
 
 console.log('Starting WebSocket server...');
-const server = new MockWebSocketServer();
+new WebSocketManager();
 
 // Handle shutdown
 process.on('SIGINT', () => {
   console.log('\nShutting down WebSocket server...');
-  server.close();
   process.exit(0);
 });

@@ -1,12 +1,12 @@
 import type { ApiMessage, BaseSector } from '../types';
 import { LocalStore } from '../storage/localStore';
-import config from '../config';
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectTimeout = 1000;
   private store: LocalStore;
-  private reconnectTimeout: number = 1000;
-  private maxReconnectTimeout: number = 30000;
   private subscribers: Set<(items: BaseSector[]) => void> = new Set();
   private connected: boolean = false;
 
@@ -16,78 +16,136 @@ export class WebSocketClient {
   }
 
   private connect() {
-    try {
-      // Use proxy URL from current host
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      const wsUrl = `${protocol}//${host}${config.ws.path}`;
-      console.log('Connecting to WebSocket:', wsUrl);
-      
-      this.ws = new WebSocket(wsUrl);
-      
-      this.ws.onopen = () => {
-        console.log('WebSocket connected');
-        this.connected = true;
-        this.reconnectTimeout = 1000;
-        this.sendMessage({ type: 'init', projectId: 1 });
-      };
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsPort = import.meta.env.VITE_WS_PORT || '4321';
+    const wsUrl = `${wsProtocol}//${window.location.hostname}:${wsPort}`;
 
-      this.ws.onclose = () => {
-        console.log('WebSocket disconnected, will retry in', this.reconnectTimeout, 'ms');
-        this.connected = false;
-        // Exponential backoff for reconnect
-        setTimeout(() => this.connect(), this.reconnectTimeout);
-        this.reconnectTimeout = Math.min(this.reconnectTimeout * 2, this.maxReconnectTimeout);
-      };
+    console.log('Connecting to WebSocket server:', wsUrl);
 
-      this.ws.onmessage = (event) => {
-        const message = JSON.parse(event.data) as ApiMessage;
-        if (message.type === 'sync') {
+    this.ws = new WebSocket(wsUrl);
+    this.setupEventHandlers();
+  }
+
+  private setupEventHandlers() {
+    if (!this.ws) return;
+
+    this.ws.onopen = () => {
+      console.log('Connected to WebSocket server');
+      this.reconnectAttempts = 0;
+      this.connected = true;
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const message: ApiMessage = JSON.parse(event.data);
+        this.handleMessage(message);
+      } catch (error) {
+        console.error('Failed to parse message:', error);
+      }
+    };
+
+    this.ws.onclose = () => {
+      console.log('Disconnected from WebSocket server');
+      this.connected = false;
+      this.attemptReconnect();
+    };
+
+    this.ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+  }
+
+  private attemptReconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('Max reconnection attempts reached');
+      return;
+    }
+
+    this.reconnectAttempts++;
+    console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+
+    setTimeout(() => {
+      this.connect();
+    }, this.reconnectTimeout * this.reconnectAttempts);
+  }
+
+  private handleMessage(message: ApiMessage) {
+    switch (message.type) {
+      case 'init':
+        if (message.items) {
           this.store.sync(message.items);
           this.notifySubscribers(message.items);
         }
-      };
-
-      this.ws.onerror = (error) => {
-        console.warn('WebSocket error:', error);
-      };
-    } catch (error) {
-      console.error('Failed to connect:', error);
-      this.connected = false;
-      setTimeout(() => this.connect(), this.reconnectTimeout);
+        break;
+      case 'update':
+        if (message.item) {
+          this.store.updateItem(message.item);
+          this.notifySubscribers(this.store.getItems());
+        }
+        break;
+      case 'create':
+        if (message.item) {
+          this.store.addItem(message.item);
+          this.notifySubscribers(this.store.getItems());
+        }
+        break;
+      case 'delete':
+        if (message.item?.id) {
+          this.store.deleteItem(message.item.id);
+          this.notifySubscribers(this.store.getItems());
+        }
+        break;
+      case 'error':
+        console.error('Server error:', message.error);
+        break;
     }
   }
 
-  subscribe(callback: (items: BaseSector[]) => void) {
+  public subscribe(callback: (items: BaseSector[]) => void) {
     this.subscribers.add(callback);
-    if (this.store.items.length > 0) {
-      callback(this.store.items);
-    }
-  }
-
-  unsubscribe(callback: (items: BaseSector[]) => void) {
-    this.subscribers.delete(callback);
+    callback(this.store.getItems());
+    return () => this.subscribers.delete(callback);
   }
 
   private notifySubscribers(items: BaseSector[]) {
     this.subscribers.forEach(callback => callback(items));
   }
 
-  private sendMessage(message: ApiMessage) {
+  public sendUpdate(item: BaseSector) {
+    if (!this.connected) {
+      console.warn('Not connected, storing update locally');
+      this.store.updateItem(item);
+      this.notifySubscribers(this.store.getItems());
+      return;
+    }
+    this.send({ type: 'update', item });
+  }
+
+  public sendCreate(item: BaseSector) {
+    if (!this.connected) {
+      console.warn('Not connected, storing create locally');
+      this.store.addItem(item);
+      this.notifySubscribers(this.store.getItems());
+      return;
+    }
+    this.send({ type: 'create', item });
+  }
+
+  public sendDelete(item: BaseSector) {
+    if (!this.connected) {
+      console.warn('Not connected, storing delete locally');
+      this.store.deleteItem(item.id);
+      this.notifySubscribers(this.store.getItems());
+      return;
+    }
+    this.send({ type: 'delete', item });
+  }
+
+  private send(message: ApiMessage) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
+    } else {
+      console.error('WebSocket is not connected');
     }
-  }
-
-  updateItem(item: BaseSector) {
-    this.sendMessage({ type: 'update', item });
-  }
-
-  createItem(item: BaseSector) {
-    this.sendMessage({ type: 'create', item });
-  }
-
-  deleteItem(itemId: number) {
-    this.sendMessage({ type: 'delete', itemId });
   }
 }

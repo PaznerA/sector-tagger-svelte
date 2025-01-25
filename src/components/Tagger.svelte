@@ -512,7 +512,7 @@
     if (item) {
       item.x = x;
       item.y = y;
-      wsClient.updateItem(item);
+      wsClient.sendUpdate(item);
       items = [...items]; // Trigger reactivity
     }
   }
@@ -522,7 +522,7 @@
     if (item) {
       item.width = width;
       item.height = height;
-      wsClient.updateItem(item);
+      wsClient.sendUpdate(item);
       items = [...items]; // Trigger reactivity
     }
   }
@@ -531,7 +531,7 @@
     const item = items.find(item => item.id === id);
     if (item) {
       item.rotation = rotation;
-      wsClient.updateItem(item);
+      wsClient.sendUpdate(item);
       items = [...items]; // Trigger reactivity
     }
   }

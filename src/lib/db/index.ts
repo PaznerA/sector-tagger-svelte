@@ -1,66 +1,41 @@
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { eq, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/bun-sqlite';
+import { Database } from 'bun:sqlite';
 import type { BaseSector } from '../types';
+import { projects, sectors } from './schema';
+import { eq } from 'drizzle-orm';
 
-const sqlite = new Database('local.db');
+const sqlite = new Database('data/db.sqlite');
 export const db = drizzle(sqlite);
 
 export async function getProject(id: number) {
-  return db.run<{ id: number; name: string }>(sql`
-    SELECT * FROM projects WHERE id = ${id}
-  `);
+  const result = await db.select().from(projects).where(eq(projects.id, id));
+  return result[0];
 }
 
-export async function getSectors(projectId: number) {
-  return db.run<BaseSector>(sql`
-    SELECT 
-      id, name, level, x, y, width, height, rotation, scale, parent_id as parentId
-    FROM sectors 
-    WHERE project_id = ${projectId}
-  `);
+export async function getProjects() {
+  return db.select().from(projects);
+}
+
+export async function getSectorsByProjectId(projectId: number) {
+  return db.select().from(sectors).where(eq(sectors.projectId, projectId));
 }
 
 export async function updateSector(id: number, data: Partial<BaseSector>) {
-  return db.run(sql`
-    UPDATE sectors 
-    SET 
-      name = ${data.name ?? sql`name`},
-      x = ${data.x ?? sql`x`},
-      y = ${data.y ?? sql`y`},
-      width = ${data.width ?? sql`width`},
-      height = ${data.height ?? sql`height`},
-      rotation = ${data.rotation ?? sql`rotation`},
-      scale = ${data.scale ?? sql`scale`},
-      parent_id = ${data.parentId ?? sql`parent_id`},
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${id}
-    RETURNING *
-  `);
+  const { id: _, ...updateData } = data;
+  return db.update(sectors)
+    .set(updateData)
+    .where(eq(sectors.id, id))
+    .returning();
 }
 
 export async function createSector(data: Omit<BaseSector, 'id'> & { projectId: number }) {
-  return db.run(sql`
-    INSERT INTO sectors (
-      name, level, x, y, width, height, rotation, scale, parent_id, project_id
-    ) VALUES (
-      ${data.name},
-      ${data.level},
-      ${data.x},
-      ${data.y},
-      ${data.width},
-      ${data.height},
-      ${data.rotation},
-      ${data.scale},
-      ${data.parentId ?? null},
-      ${data.projectId}
-    )
-    RETURNING *
-  `);
+  return db.insert(sectors)
+    .values(data)
+    .returning();
 }
 
 export async function deleteSector(id: number) {
-  return db.run(sql`
-    DELETE FROM sectors WHERE id = ${id} RETURNING *
-  `);
+  return db.delete(sectors)
+    .where(eq(sectors.id, id))
+    .returning();
 }

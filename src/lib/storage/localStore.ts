@@ -2,7 +2,6 @@ import type { BaseSector } from '../types';
 import { mockItems } from '../api/mockData';
 
 const STORAGE_KEY = 'sector-tagger-data';
-const LAST_SYNC_KEY = 'sector-tagger-last-sync';
 
 interface StorageData {
   projectId: number;
@@ -72,6 +71,12 @@ export class LocalStore {
       id: Math.max(0, ...this.data.items.map(i => i.id)) + 1,
     };
     this.data.items.push(newItem);
+    this.save();
+    return this.data.items;
+  }
+
+  addItem(item: BaseSector) {
+    this.data.items.push(item);
     this.save();
     return this.data.items;
   }

@@ -4,19 +4,19 @@
 
 - NPM package name: sector-tagger-svelte
 - GitHub account: PaznerA
-- Tech stack: Bun + Astro + Svelte 5
+- Tech stack: Bun + Astro + Svelte 5 + SQLite + WebSocket
 - Purpose: Visual editor for creating, managing and tagging sectored layouts
 
 ## Core Features
 
 ### Canvas Management
-
 - Single canvas instance for performance
 - Hierarchical rendering (pages -> views -> sectors)
 - Proper z-index handling for overlapping elements
+- Real-time synchronization via WebSocket
+- Offline support with LocalStorage
 
 ### Sector Types
-
 1. Page
    - Top-level container
    - Blue color scheme
@@ -31,15 +31,14 @@
    - No children allowed
 
 ### Interactions
-
 - Click to select
 - Drag to move
 - Resize from corners
 - Hover effects
 - Transform mode for advanced editing
+- Real-time updates across browsers
 
 ### Hierarchy Rules
-
 - Pages can contain views
 - Views can contain sectors
 - Sectors are leaf nodes
@@ -47,41 +46,116 @@
 - Transformations cascade down the tree
 
 ### UI Components
-
 - Canvas (main editing area)
 - SelectedPanel (details of selected item)
 - HoverPanel (quick info on hover)
 - Controls (transform toggle)
+- TransformHandle (resize/rotate handles)
 
 ### Visual Feedback
-
 - Color coding by type
 - Selection highlight
 - Hover state
 - Resize handles
 - Parent-child relationships
+- Real-time sync status
 
 ## Development Rules
-
 1. Use trailing commas in multiline
 2. Keep code in English
 3. Document in English
 4. Maintain type safety
-5. Follow Svelte 5 best practices
+5. Follow Svelte 5 runes best practices:
+   - Use `let` for reactive variables
+   - Use `$effect` for side effects
+   - Use `$derived` for computed values
+   - Use `$props` for component props
+   - Use `$state` for complex state
 6. Keep performance in mind
+7. Use environment variables for configuration
+
+## Environment variables
+
+# Server Configuration
+VITE_SERVER_HOST=localhost
+VITE_SERVER_PORT=3000
+VITE_SERVER_PROTOCOL=https
+
+# WebSocket Configuration
+VITE_WS_HOST=localhost
+VITE_WS_PORT=4321
+VITE_WS_PATH=/api/ws
+
+# HMR Configuration
+VITE_HMR_PORT=24678
+VITE_HMR_HOST=localhost
+
+# SSL Configuration
+VITE_SSL_KEY_PATH=./certs/key.pem
+VITE_SSL_CERT_PATH=./certs/cert.pem
+
+# Database Configuration
+VITE_DB_PATH=./data/db.sqlite
+
+# Development Mode
+VITE_DEV_MODE=true
 
 ## Project Structure
 
 ```
-src/
-  components/
-    Tagger.svelte       # Main canvas component
-    SelectedPanel.svelte # Selection details
-    HoverPanel.svelte   # Hover information
-  types/
-    index.ts           # TypeScript definitions
-  styles/
-    panels.css         # UI styling
+sector-tagger-svelte/
+├── certs/                    # SSL certifikáty
+│   ├── cert.pem
+│   └── key.pem
+├── data/                     # Data a databáze
+│   └── db.sqlite
+├── scripts/                  # Pomocné skripty
+│   ├── init-db.ts           # Inicializace databáze
+│   ├── start-dev.sh         # Start dev serveru
+│   └── start-ws.ts          # Start WebSocket serveru
+├── src/
+│   ├── assets/              # Statické soubory
+│   │   ├── astro.svg
+│   │   └── background.svg
+│   ├── components/          # Svelte komponenty
+│   │   ├── BaseSector.svelte     # Základní komponenta sektoru
+│   │   ├── HoverPanel.svelte     # Panel s informacemi při hoveru
+│   │   ├── SelectedPanel.svelte  # Panel s detaily vybraného sektoru
+│   │   ├── Tagger.svelte         # Hlavní canvas komponenta
+│   │   └── TransformHandle.svelte # Ovládací prvky transformace
+│   ├── layouts/             # Astro layouty
+│   │   └── Layout.astro     # Hlavní layout
+│   ├── lib/                 # Knihovní kód
+│   │   ├── api/            # API a WebSocket
+│   │   │   ├── mockData.ts          # Testovací data
+│   │   │   ├── mockWebSocketServer.ts # Mock WS server
+│   │   │   ├── types.ts             # API typy
+│   │   │   ├── webSocketServer.ts   # WS server
+│   │   │   └── websocketClient.ts   # WS client
+│   │   ├── config.ts       # Konfigurace aplikace
+│   │   ├── db/            # Databáze
+│   │   │   ├── index.ts    # DB exporty
+│   │   │   ├── migrate.ts  # DB migrace
+│   │   │   └── schema.ts   # DB schema
+│   │   └── storage/       # Úložiště
+│   │       └── localStore.ts # Lokální úložiště
+│   ├── pages/              # Astro stránky
+│   │   ├── api/           # API endpointy
+│   │   │   ├── projects/  # Projekty API
+│   │   │   │   ├── [id].ts
+│   │   │   │   └── index.ts
+│   │   │   └── ws.ts     # WebSocket endpoint
+│   │   └── index.astro    # Hlavní stránka
+│   ├── styles/            # Globální styly
+│   │   └── panels.css
+│   └── types/             # TypeScript typy
+│       └── index.ts
+├── .env                    # Proměnné prostředí
+├── .env.example           # Vzor pro .env
+├── .gitignore
+├── astro.config.mjs       # Konfigurace Astro
+├── package.json           # NPM konfigurace
+└── tsconfig.json          # TypeScript konfigurace
 ```
 
 ## Data Structure
@@ -98,5 +172,35 @@ interface BaseSector {
   name: string,
   parentId?: number,
   level: 'page' | 'view' | 'sector',
+}
+```
+
+
+## Configuration
+
+```typescript
+interface Config {
+  server: {
+    host: string,
+    port: number,
+    protocol: string,
+  },
+  ws: {
+    host: string,
+    port: number,
+    path: string,
+  },
+  hmr: {
+    host: string,
+    port: number,
+  },
+  ssl: {
+    keyPath: string,
+    certPath: string,
+  },
+  db: {
+    path: string,
+  },
+  dev: boolean,
 }
 ```

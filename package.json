@@ -3,16 +3,18 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
-    "dev": "astro dev",
-    "dev:https": "./scripts/start-dev.sh",
+    "dev": "bun run dev:all",
+    "dev:all": "concurrently \"bun run dev:frontend\" \"bun run dev:ws\"",
+    "dev:frontend": "astro dev",
+    "dev:ws": "bun run scripts/ws-server.ts",
     "build": "astro check && astro build",
-    "preview": "astro preview",
-    "astro": "astro",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
-    "init-db": "bun run scripts/init-db.ts",
-    "ws": "bun run scripts/start-ws.ts"
+    "preview": "bun run preview:all",
+    "preview:all": "concurrently \"astro preview\" \"bun run dev:ws\"",
+    "db:init": "bun run scripts/init-db.ts",
+    "db:migrate": "bun run scripts/migrate.ts"
   },
   "dependencies": {
+    "@astrojs/check": "^0.9.4",
     "@astrojs/svelte": "^7.0.4",
     "astro": "^5.1.9",
     "better-sqlite3": "^11.8.1",
@@ -21,9 +23,12 @@
     "typescript": "^5.7.3"
   },
   "devDependencies": {
+    "@astrojs/node": "^9.0.2",
+    "@types/better-sqlite3": "^7.6.12",
     "@typescript-eslint/eslint-plugin": "^8.21.0",
     "@typescript-eslint/parser": "^8.21.0",
     "bun-types": "^1.2.0",
+    "concurrently": "^9.1.2",
     "svelte-check": "^4.1.4"
   }
 }
