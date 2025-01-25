@@ -1,0 +1,102 @@
+# Sector Tagger Project Rules
+
+## Project Overview
+
+- NPM package name: sector-tagger-svelte
+- GitHub account: PaznerA
+- Tech stack: Bun + Astro + Svelte 5
+- Purpose: Visual editor for creating, managing and tagging sectored layouts
+
+## Core Features
+
+### Canvas Management
+
+- Single canvas instance for performance
+- Hierarchical rendering (pages -> views -> sectors)
+- Proper z-index handling for overlapping elements
+
+### Sector Types
+
+1. Page
+   - Top-level container
+   - Blue color scheme
+   - Contains views
+2. View
+   - Mid-level layout section
+   - Green color scheme
+   - Contains sectors
+3. Sector
+   - Lowest-level content area
+   - Red color scheme
+   - No children allowed
+
+### Interactions
+
+- Click to select
+- Drag to move
+- Resize from corners
+- Hover effects
+- Transform mode for advanced editing
+
+### Hierarchy Rules
+
+- Pages can contain views
+- Views can contain sectors
+- Sectors are leaf nodes
+- Children move with parents
+- Transformations cascade down the tree
+
+### UI Components
+
+- Canvas (main editing area)
+- SelectedPanel (details of selected item)
+- HoverPanel (quick info on hover)
+- Controls (transform toggle)
+
+### Visual Feedback
+
+- Color coding by type
+- Selection highlight
+- Hover state
+- Resize handles
+- Parent-child relationships
+
+## Development Rules
+
+1. Use trailing commas in multiline
+2. Keep code in English
+3. Document in English
+4. Maintain type safety
+5. Follow Svelte 5 best practices
+6. Keep performance in mind
+
+## Project Structure
+
+```
+src/
+  components/
+    Tagger.svelte       # Main canvas component
+    SelectedPanel.svelte # Selection details
+    HoverPanel.svelte   # Hover information
+  types/
+    index.ts           # TypeScript definitions
+  styles/
+    panels.css         # UI styling
+```
+
+## Data Structure
+
+```typescript
+interface BaseSector {
+  id: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation: number,
+  scale: number,
+  name: string,
+  parentId?: number,
+  level: 'page' | 'view' | 'sector',
+}
+```

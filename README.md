@@ -43,6 +43,51 @@ All commands are run from the root of the project, from a terminal:
 | `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
 | `npm run astro -- --help` | Get help using the Astro CLI                     |
 
+## 🔧 Environment Configuration
+
+The project uses environment variables for WebSocket configuration in different environments:
+
+### Development
+
+Copy `.env.development` to `.env` for local development:
+
+```sh
+cp .env.development .env
+```
+
+Default development settings:
+- WebSocket Protocol: `ws`
+- Host: `localhost`
+- Port: `4321`
+
+### Production
+
+Copy `.env.production.example` to `.env.production` and adjust values:
+
+```sh
+cp .env.production.example .env.production
+```
+
+Key environment variables:
+- `PORT` - Server port (default: 8080)
+- `VITE_HMR_PROTOCOL` - WebSocket protocol (ws/wss)
+- `VITE_HMR_HOST` - WebSocket host
+- `VITE_HMR_PORT` - WebSocket port
+- `VITE_HMR_CLIENT_PORT` - Client port (if behind proxy)
+- `VITE_HMR_PATH` - WebSocket path
+- `VITE_WS_PROXY_TARGET` - WebSocket proxy target
+- `VITE_WS_SECURE` - Use secure WebSocket
+- `VITE_USE_POLLING` - Use polling for file watching
+
+### Proxy Configuration
+
+When running behind a proxy:
+1. Set `VITE_HMR_PROTOCOL=wss`
+2. Configure `VITE_HMR_HOST` to your domain
+3. Set `VITE_HMR_PORT` and `VITE_HMR_CLIENT_PORT` to 443
+4. Enable secure WebSocket with `VITE_WS_SECURE=true`
+5. Set `VITE_HMR_PATH=/ws` for proxy path
+
 ## 👀 Want to learn more?
 
 Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
