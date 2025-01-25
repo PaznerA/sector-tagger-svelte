@@ -4,14 +4,12 @@
   import SelectedPanel from './SelectedPanel.svelte';
   import HoverPanel from './HoverPanel.svelte';
   import type { BaseSector } from '../lib/types';
-  import { WebSocketClient } from '../lib/api/websocketClient';
+  import { getAllSectors, addSector, updateSector, deleteSector } from '../lib/storage/staticStore';
   import '../styles/panels.css';
 
   const { projectId } = $props<{projectId: number}>();
   
   const dispatch = createEventDispatcher();
-  const wsClient = new WebSocketClient();
-
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
 
@@ -86,18 +84,14 @@
       canvas.height = height;
     }
 
-    // Subscribe to WebSocket client updates
-    const unsubscribe = wsClient.subscribe((newItems) => {
-      items = newItems;
-      draw();
-    });
+    // Load sectors from storage
+    items = getAllSectors();
     
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', handleResize);
     }
 
     return () => {
-      unsubscribe();
       if (typeof window !== 'undefined') {
         window.removeEventListener('resize', handleResize);
       }
@@ -512,7 +506,7 @@
     if (item) {
       item.x = x;
       item.y = y;
-      wsClient.sendUpdate(item);
+      updateSector(item);
       items = [...items]; // Trigger reactivity
     }
   }
@@ -522,7 +516,7 @@
     if (item) {
       item.width = width;
       item.height = height;
-      wsClient.sendUpdate(item);
+      updateSector(item);
       items = [...items]; // Trigger reactivity
     }
   }
@@ -531,7 +525,7 @@
     const item = items.find(item => item.id === id);
     if (item) {
       item.rotation = rotation;
-      wsClient.sendUpdate(item);
+      updateSector(item);
       items = [...items]; // Trigger reactivity
     }
   }
