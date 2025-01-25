@@ -7,6 +7,7 @@
     "dev:all": "concurrently \"bun run dev:frontend\" \"bun run dev:ws\"",
     "dev:frontend": "astro dev",
     "dev:ws": "bun run scripts/ws-server.ts",
+    "start": "concurrently \"HOST=0.0.0.0 node ./dist/server/entry.mjs\" \"WS_HOST=0.0.0.0 bun run scripts/ws-server.ts\"",
     "build": "astro check && astro build",
     "preview": "bun run preview:all",
     "preview:all": "concurrently \"astro preview\" \"bun run dev:ws\"",
