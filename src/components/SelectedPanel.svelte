@@ -1,11 +1,40 @@
 <script lang="ts">
   import type { AnyData } from '../types';
+  import { WebSocketClient } from '../lib/api/websocketClient';
+
+  const wsClient = new WebSocketClient();
+
+  const handleAddSector = () => {
+    const newSectorType = item.level === 'view' ? 'sector' : 'view';
+    wsClient.sendCreate({ 
+      id: 0,
+      projectId: item.projectId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      parentId: item.id,
+      name: 'New ' + newSectorType,
+      level: newSectorType,
+      x: item.x,
+      y: item.y,
+      width: 100,
+      height: 100,
+      rotation: 0,
+      scale: 1,
+    });
+  };
+
+  const handleDeleteSector = () => {
+    console.log('Delete sector', item);
+    wsClient.sendDelete(item);
+  };
 
   let { item } = $props<{ item: AnyData | null }>();
 </script>
 
 {#if item}
   <div class="panel selected">
+    <button onclick={handleAddSector}>Add sector inside</button>
+    <button onclick={handleDeleteSector}>Delete sector</button>
     <div class="property">
       <span class="property-label">ID:</span>
       <span>{item.id}</span>
