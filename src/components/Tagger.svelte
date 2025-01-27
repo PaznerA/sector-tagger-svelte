@@ -3,14 +3,31 @@
   import { createEventDispatcher } from 'svelte';
   import SelectedPanel from './SelectedPanel.svelte';
   import HoverPanel from './HoverPanel.svelte';
+  import VersionPanel from './VersionPanel.svelte';
+  import SavePanel from './SavePanel.svelte';
   import type { BaseSector } from '../lib/types';
   import { WebSocketClient } from '../lib/api/websocketClient';
   import '../styles/panels.css';
+
+  type TransformEvent = CustomEvent<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+    scale: number;
+  }>;
 
   const { projectId } = $props<{projectId: number}>();
   
   const dispatch = createEventDispatcher();
   const wsClient = new WebSocketClient();
+
+  // Connect to WebSocket server
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsPort = import.meta.env.VITE_WS_PORT || '4321';
+  const wsUrl = `${wsProtocol}//${window.location.hostname}:${wsPort}/api/ws`;
+  wsClient.connect(wsUrl);
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
@@ -36,6 +53,10 @@
   let items: BaseSector[] = [];
   let width = 800;
   let height = 600;
+  let lastClickTime = $state(0);
+  let lastClickId = $state<number | null>(null);
+  let pendingChanges = $state<BaseSector[]>([]);
+  let autosaveEnabled = $state(true);
 
   let selectedItem = $derived(() => {
     const found = items.find((item: BaseSector) => item.id === selectedId);
@@ -143,6 +164,9 @@
     // Draw items in order: pages first, then views, then sectors
     const orderedItems = [...items].sort((a: BaseSector, b: BaseSector) => {
       const levels: Record<BaseSector['level'], number> = { page: 0, view: 1, sector: 2 };
+      // Pokud je item v transform módu, vykreslit ho jako poslední
+      if (a.id === transformingId) return 1;
+      if (b.id === transformingId) return -1;
       return levels[a.level] - levels[b.level];
     });
 
@@ -282,17 +306,13 @@
   }
 
   function findClickedItem(pos: { x: number; y: number }): BaseSector | null {
-    // During transform mode, only allow clicking the transformed item
-    if (transformingId !== null) {
-      const transformingItem = items.find(item => item.id === transformingId);
-      if (transformingItem && isPointInItem(pos, transformingItem)) {
-        return transformingItem;
-      }
-      return null;
-    }
+    // Procházíme sektory od nejmenšího (nejvíc zanořeného) po největší
+    const orderedItems = [...items].sort((a: BaseSector, b: BaseSector) => {
+      const levels: Record<BaseSector['level'], number> = { sector: 0, view: 1, page: 2 };
+      return levels[a.level] - levels[b.level];
+    });
 
-    // Search in reverse order to find top-most item first
-    return [...items].reverse().find(item => isPointInItem(pos, item)) ?? null;
+    return orderedItems.find(item => isPointInItem(pos, item)) ?? null;
   }
 
   function isPointInItem(pos: { x: number; y: number }, item: BaseSector): boolean {
@@ -319,13 +339,29 @@
     );
   }
 
+  function handleDoubleClick(item: BaseSector) {
+    if (selectedId === item.id) {
+      toggleTransform();
+    }
+  }
+
   function handleMouseDown(e: MouseEvent) {
     const pos = getMousePos(e);
     const clickedItem = findClickedItem(pos);
 
     if (clickedItem) {
       draggedItem = clickedItem;
-      
+
+      // Handle double click
+      const currentTime = Date.now();
+      if (lastClickId === clickedItem.id && currentTime - lastClickTime < 300) {
+        handleDoubleClick(clickedItem);
+        return;
+      }
+      lastClickTime = currentTime;
+      lastClickId = clickedItem.id;
+
+      // Check for transform handles first
       if (transformingId === clickedItem.id) {
         const handle = isNearHandle(pos, clickedItem);
         if (handle) {
@@ -337,16 +373,15 @@
           
           if (handle === 'rotate') {
             isRotating = true;
-            startAngle = getAngle(center, pos);
             startRotation = clickedItem.rotation;
+            startAngle = Math.atan2(pos.y - center.y, pos.x - center.x);
           } else {
             isResizing = true;
             startWidth = clickedItem.width;
             startHeight = clickedItem.height;
             startX = clickedItem.x;
             startY = clickedItem.y;
-            
-            // Transform initial mouse position
+
             const angle = (clickedItem.rotation * Math.PI) / 180;
             const cos = Math.cos(-angle);
             const sin = Math.sin(-angle);
@@ -359,17 +394,16 @@
         }
       }
       
-      // Only allow dragging if not in transform mode or if dragging the transformed item
-      if (transformingId === null || transformingId === clickedItem.id) {
+      // Only allow dragging if in transform mode
+      if (transformingId === clickedItem.id) {
         isDragging = true;
         startX = clickedItem.x;
         startY = clickedItem.y;
         dragStartX = pos.x;
         dragStartY = pos.y;
-        selectedId = clickedItem.id;
       }
+      selectedId = clickedItem.id;
     } else if (transformingId === null) {
-      // Only clear selection if not in transform mode
       selectedId = null;
     }
   }
@@ -499,6 +533,17 @@
   }
 
   function handleMouseUp() {
+    if (isDragging || isResizing || isRotating) {
+      // Add changed item to pending changes
+      const changedItem = items.find(item => item.id === (draggedItem?.id ?? selectedId));
+      if (changedItem) {
+        const existingChange = pendingChanges.find(change => change.id === changedItem.id);
+        if (!existingChange) {
+          pendingChanges = [...pendingChanges, { ...changedItem }];
+        }
+      }
+    }
+
     isDragging = false;
     isResizing = false;
     isRotating = false;
@@ -537,67 +582,238 @@
   }
 
   function toggleTransform() {
+    if (selectedId === null) return;
+    
     if (transformingId === selectedId) {
+      // Exiting transform mode - save changes if any
+      if (pendingChanges.length > 0) {
+        // TODO: Save changes to version control
+        console.log('Saving changes:', pendingChanges);
+        pendingChanges = [];
+      }
       transformingId = null;
     } else {
       transformingId = selectedId;
     }
+    draw();
+  }
+
+  async function handleSaved() {
+    if (pendingChanges.length === 0) return;
+
+    // Save all pending changes
+    for (const change of pendingChanges) {
+      await wsClient.sendUpdate(change);
+    }
+    
+    // Clear pending changes after successful save
+    pendingChanges = [];
+    draw();
+  }
+
+  function handleUndo() {
+    if (pendingChanges.length === 0) return;
+    
+    // Revert all pending changes
+    for (const change of pendingChanges) {
+      const item = items.find(i => i.id === change.id);
+      if (item) {
+        // Load the last saved state from websocket
+        wsClient.getSector(item.id).then(savedItem => {
+          if (savedItem) {
+            Object.assign(item, savedItem);
+            draw();
+          }
+        });
+      }
+    }
+    
+    // Clear pending changes
+    pendingChanges = [];
+  }
+
+  async function handleRollback(event: CustomEvent<BaseSector>) {
+    const version = event.detail;
+    const item = items.find(i => i.id === version.id);
+    if (item) {
+      // Restore version
+      item.x = version.x;
+      item.y = version.y;
+      item.width = version.width;
+      item.height = version.height;
+      item.rotation = version.rotation;
+      item.scale = version.scale;
+      
+      if (!autosaveEnabled) {
+        // Clear pending changes for this item
+        pendingChanges = pendingChanges.filter(change => change.id !== item.id);
+      } else {
+        // If autosave is enabled, save the rollback immediately
+        await wsClient.updateSector(item);
+      }
+      
+      draw();
+    }
+  }
+
+  function updateTransform(event: TransformEvent) {
+    if (!transformingId) return;
+    
+    const item = items.find(i => i.id === transformingId);
+    if (!item) return;
+
+    const { x, y, width, height, rotation, scale } = event.detail;
+    const changes = {
+      x: Math.round(x),
+      y: Math.round(y),
+      width: Math.round(width),
+      height: Math.round(height),
+      rotation,
+      scale,
+    };
+
+    // Update local state
+    Object.assign(item, changes);
+
+    // Add to pending changes if autosave is disabled
+    if (!autosaveEnabled) {
+      const existingChange = pendingChanges.find(change => change.id === item.id);
+      if (existingChange) {
+        Object.assign(existingChange, changes);
+      } else {
+        pendingChanges = [...pendingChanges, { ...item }];
+      }
+    } else {
+      // Autosave changes immediately
+      wsClient.sendUpdate(item);
+    }
+
+    draw();
   }
 </script>
 
-<div class="panel controls">
-  <button on:click={toggleTransform} disabled={!selectedId}>
+<div class="panel controls" draggable="true">
+  <h2>Controls</h2>
+  <div class="autosave-toggle">
+    <label>
+      <input 
+        type="checkbox" 
+        bind:checked={autosaveEnabled}
+      />
+      Autosave Changes
+    </label>
+  </div>
+  <button onclick={toggleTransform} disabled={!selectedId}>
     {transformingId ? 'End Transform' : 'Start Transform'}
   </button>
+  
+  {#if transformingId}
+    <div class="transform-controls">
+      <hr />
+      <SavePanel 
+        {projectId}
+        transformItem={selectedItem}
+        {pendingChanges}
+        {autosaveEnabled}
+        onsaved={handleSaved}
+        onundo={handleUndo}
+      />
+    </div>
+  {/if}
+  <hr />
+  <VersionPanel
+    {projectId}
+    transformItem={selectedItem}
+    onrollback={handleRollback}
+  />
+  <hr />
+  {#if selectedItem}
+    <SelectedPanel selectedItem={selectedItem} />
+  {/if}
+
+  {#if hoveredItem && !transformingId}
+    <HoverPanel hoveredItem={hoveredItem} />
+  {/if}
 </div>
 
 <canvas
   bind:this={canvas}
-  on:mousedown={handleMouseDown}
-  on:mousemove={handleMouseMove}
-  on:mouseup={handleMouseUp}
-  on:mouseleave={handleMouseUp}
+  onmousedown={handleMouseDown}
+  onmousemove={handleMouseMove}
+  onmouseup={handleMouseUp}
+  onmouseleave={handleMouseUp}
 ></canvas>
 
-{#if selectedId && selectedItem()}
-  <SelectedPanel item={selectedItem()} />
-{/if}
-
-{#if hoveredId && hoveredId !== selectedId && hoveredItem()}
-  <HoverPanel item={hoveredItem()} />
-{/if}
 
 <style>
-  canvas {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    cursor: pointer;
-  }
-
-  .panel.controls {
+  .controls {
     position: fixed;
     top: 20px;
-    right: 20px;
-    background: white;
-    padding: 10px;
-    border-radius: 5px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    left: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 1rem;
+    border-radius: 8px;
+    z-index: 1000;
+    min-width: 250px;
+  }
+
+  .transform-controls {
+    margin-top: 1rem;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    margin: 0.5rem 0;
   }
 
   button {
-    padding: 8px 16px;
-    background: #3498db;
-    color: white;
+    width: 100%;
+    padding: 0.5rem;
+    background: #4a9eff;
     border: none;
     border-radius: 4px;
+    color: white;
     cursor: pointer;
+    font-weight: 500;
   }
 
   button:disabled {
-    background: #bdc3c7;
+    opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  button:hover:not(:disabled) {
+    background: #3182ce;
+  }
+
+  h2 {
+    margin: 0 0 1rem 0;
+    font-size: 1.2rem;
+    font-weight: 500;
+  }
+
+  .autosave-toggle {
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .autosave-toggle label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    opacity: 0.8;
+  }
+
+  .autosave-toggle label:hover {
+    opacity: 1;
+  }
+
+  .autosave-toggle input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
   }
 </style>

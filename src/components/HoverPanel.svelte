@@ -1,18 +1,18 @@
 <script lang="ts">
-  import type { AnyData } from '../types';
+  import type { BaseSector } from '../types';
 
-  let { item } = $props<{ item: AnyData | null }>();
+  let { hoveredItem } = $props<{ hoveredItem: BaseSector | null }>();
 </script>
 
-{#if item}
+{#if hoveredItem}
   <div class="panel hover">
     <div class="property">
       <span class="property-label">Name:</span>
-      <span>{item.name}</span>
+      <span>{hoveredItem.name}</span>
     </div>
     <div class="property">
       <span class="property-label">Type:</span>
-      <span>{item.level}</span>
+      <span>{hoveredItem.level}</span>
     </div>
   </div>
 {/if}

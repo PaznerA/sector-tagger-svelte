@@ -12,11 +12,11 @@ async function main() {
   console.log('Initializing database...');
 
   // Drop existing tables
-  await sqlite.run('DROP TABLE IF EXISTS sectors');
-  await sqlite.run('DROP TABLE IF EXISTS projects');
+  sqlite.run('DROP TABLE IF EXISTS sectors');
+  sqlite.run('DROP TABLE IF EXISTS projects');
 
   // Create tables
-  await sqlite.run(`
+  sqlite.run(`
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
@@ -25,7 +25,7 @@ async function main() {
     )
   `);
 
-  await sqlite.run(`
+  sqlite.run(`
     CREATE TABLE IF NOT EXISTS sectors (
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
